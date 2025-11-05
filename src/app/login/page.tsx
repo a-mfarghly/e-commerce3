@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import Link from "next/link";
 
@@ -14,6 +14,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams?.get("redirect");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -29,7 +31,25 @@ export default function LoginPage() {
 
     try {
       await login(formData.email, formData.password);
-      router.push("/");
+      
+      // Check user role from localStorage to redirect appropriately
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const user = JSON.parse(userData);
+          if (user.role === 'admin') {
+            // Redirect to admin dashboard or the redirect URL if specified
+            router.push(redirect || "/admin");
+          } else {
+            // Redirect to redirect URL if specified, otherwise home
+            router.push(redirect || "/");
+          }
+        } catch {
+          router.push(redirect || "/");
+        }
+      } else {
+        router.push(redirect || "/");
+      }
     } catch (err: any) {
       console.error('Login error:', err);
       

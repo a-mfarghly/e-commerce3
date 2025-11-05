@@ -416,6 +416,15 @@ export async function removeAddress(addressId: string, token: string) {
 
 export async function addToCart(productId: string, token: string) {
   try {
+    // Check if token is a local admin token (mock token)
+    if (token && token.startsWith('local_admin_token_')) {
+      console.warn("addToCart: Local admin token detected - cart operations require real API authentication");
+      return {
+        status: "success",
+        message: "Cart operations require real API authentication. Please login with a real account for cart features."
+      };
+    }
+
     console.log('addToCart: Making API request', { productId, hasToken: !!token });
     
     const res = await fetch(`${API_BASE}/cart`, {
@@ -456,6 +465,15 @@ export async function addToCart(productId: string, token: string) {
 
 export async function getCart(token: string) {
   try {
+    // Check if token is a local admin token (mock token)
+    if (token && token.startsWith('local_admin_token_')) {
+      console.warn("getCart: Local admin token detected - returning empty cart (cart features require real API authentication)");
+      return {
+        status: "success",
+        data: []
+      };
+    }
+
     console.log('getCart: Making API request with token:', token ? 'exists' : 'missing');
     
     const res = await fetch(`${API_BASE}/cart`, { 

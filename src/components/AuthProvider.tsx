@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { signin, signup, forgotPassword, verifyResetCode, User } from '@/services/clientApi';
+import { checkLocalAdminCredentials, getLocalAdminUser, generateLocalAdminToken } from '@/services/localAuth';
 
 interface AuthContextType {
   user: User | null;
@@ -67,6 +68,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
+      // Check local admin credentials first
+      if (checkLocalAdminCredentials(email, password)) {
+        console.log('AuthProvider: Using local admin credentials');
+        const user = getLocalAdminUser();
+        const token = generateLocalAdminToken();
+        
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        setUser(user);
+        return;
+      }
+      
+      // Try local user login first
+      try {
+        const localLoginResponse = await fetch('/api/auth/local/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (localLoginResponse.ok) {
+          const localData = await localLoginResponse.json();
+          if (localData.status === 'success' && localData.data?.user && localData.data?.token) {
+            localStorage.setItem('token', localData.data.token);
+            localStorage.setItem('user', JSON.stringify(localData.data.user));
+            setUser(localData.data.user);
+            return;
+          }
+        }
+      } catch (localError) {
+        console.log('AuthProvider: Local login failed, trying external API');
+      }
+      
+      // If not local user, try external API login
       const response = await signin({ email, password });
       
       let user, token;
@@ -101,6 +136,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (userData: { name: string; email: string; password: string; phone?: string }) => {
     try {
+      // Try local registration first
+      try {
+        const localRegisterResponse = await fetch('/api/auth/local/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: userData.name,
+            email: userData.email,
+            password: userData.password,
+            phone: userData.phone || '',
+            role: 'user' // New registrations are always users
+          }),
+        });
+
+        if (localRegisterResponse.ok) {
+          const localData = await localRegisterResponse.json();
+          if (localData.status === 'success' && localData.data?.user && localData.data?.token) {
+            localStorage.setItem('token', localData.data.token);
+            localStorage.setItem('user', JSON.stringify(localData.data.user));
+            setUser(localData.data.user);
+            return;
+          }
+        } else {
+          // If local registration fails, parse error
+          const errorData = await localRegisterResponse.json();
+          throw new Error(errorData.error || 'Registration failed');
+        }
+      } catch (localError: any) {
+        // If it's an email exists error or validation error, throw it
+        if (localError.message && (localError.message.includes('already exists') || localError.message.includes('required'))) {
+          throw localError;
+        }
+        // Otherwise, fall through to external API
+        console.log('AuthProvider: Local registration failed, trying external API');
+      }
+      
+      // Fallback to external API registration
       const response = await signup({
         name: userData.name,
         email: userData.email,
